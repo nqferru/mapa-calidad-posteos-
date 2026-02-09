@@ -7,38 +7,27 @@ import altair as alt
 st.set_page_config(page_title="Matriz de Rendimiento", layout="wide")
 st.title("🎯 Matriz de Impacto de Contenido")
 st.markdown("""
-Esta herramienta clasifica tus posts basándose en **Viralidad** (Alcance) y **Calidad** (Engagement).
-**Nota:** El gráfico penaliza el rendimiento promedio para resaltar solo el éxito real.
+Esta herramienta clasifica tus posts basándose en **Viralidad** (Alcance) y **Engagement Puro** (Interacciones Totales).
+**Nota:** El cálculo de engagement trata todas las interacciones (Likes, Guardados, etc.) con el mismo valor.
 """)
 
-# --- 2. BARRA LATERAL (PESOS ESTRATÉGICOS) ---
-with st.sidebar:
-    st.header("⚙️ Estrategia")
-    st.info("Define cuánto vale cada interacción para tu marca.")
-    w_like = st.number_input("Peso Me Gusta", value=1.0)
-    w_save = st.number_input("Peso Guardado (Retención)", value=3.0)
-    w_share = st.number_input("Peso Compartido (Viralidad)", value=4.0)
-    w_comment = st.number_input("Peso Comentario", value=2.0)
-
-# --- 3. FUNCIONES DE CÁLCULO ---
+# --- 2. FUNCIONES DE CÁLCULO (SIN PESOS) ---
 def calcular_metricas(df):
     # Limpieza: Asegurar que todo sea número (convierte errores a 0)
     cols_numericas = ['Alcance', 'Likes', 'Guardados', 'Compartidos', 'Comentarios']
     for col in cols_numericas:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-    # Cálculo del Score Ponderado
-    df['Score'] = (df['Likes'] * w_like) + \
-                  (df['Guardados'] * w_save) + \
-                  (df['Compartidos'] * w_share) + \
-                  (df['Comentarios'] * w_comment)
+    # Cálculo de Interacciones Totales (Suma Simple)
+    df['Total_Interacciones'] = df['Likes'] + df['Guardados'] + df['Compartidos'] + df['Comentarios']
     
     # Cálculo del Engagement Rate (ER) sobre Alcance
-    df['ER'] = df.apply(lambda row: (row['Score'] / row['Alcance']) * 100 if row['Alcance'] > 0 else 0, axis=1)
+    # Fórmula: (Total Interacciones / Alcance) * 100
+    df['ER'] = df.apply(lambda row: (row['Total_Interacciones'] / row['Alcance']) * 100 if row['Alcance'] > 0 else 0, axis=1)
     
     return df
 
-# --- 4. INTERFAZ DE INGRESO DE DATOS ---
+# --- 3. INTERFAZ DE INGRESO DE DATOS ---
 st.subheader("1. Datos de Origen")
 
 # Plantilla inicial (Ejemplo)
@@ -73,20 +62,20 @@ edited_df = st.data_editor(
 
 boton_analizar = st.button("🚀 ANALIZAR RENDIMIENTO", type="primary")
 
-# --- 5. MOTOR DE ANÁLISIS ---
+# --- 4. MOTOR DE ANÁLISIS ---
 if boton_analizar:
     if edited_df.empty:
         st.error("⚠️ La tabla está vacía.")
     else:
         try:
-            # 5.1 Procesar Datos
+            # 4.1 Procesar Datos
             df = calcular_metricas(edited_df.copy())
             
-            # 5.2 Calcular Estadísticas Base (Medianas)
+            # 4.2 Calcular Estadísticas Base (Medianas)
             mediana_alcance = df['Alcance'].median()
             mediana_er = df['ER'].median()
 
-            # 5.3 Lógica de Clasificación (Con Zona Muerta)
+            # 4.3 Lógica de Clasificación (Con Zona Muerta)
             def clasificar(row):
                 if row['Alcance'] == 0: return "📉 Revisar Datos"
                 
@@ -119,7 +108,7 @@ if boton_analizar:
 
             st.divider()
             
-            # --- 6. VISUALIZACIÓN (GRÁFICO) ---
+            # --- 5. VISUALIZACIÓN (GRÁFICO) ---
             col_graph, col_kpi = st.columns([3, 1])
             
             with col_graph:
@@ -131,8 +120,8 @@ if boton_analizar:
 
                 base = alt.Chart(df).encode(
                     x=alt.X('Alcance', title='Viralidad (Alcance)'),
-                    y=alt.Y('ER', title='Calidad (Engagement Rate %)'),
-                    tooltip=['Nombre del Post', 'Categoria', 'Alcance', 'ER', 'Likes', 'Guardados']
+                    y=alt.Y('ER', title='Tasa de Interacción (ER %)'),
+                    tooltip=['Nombre del Post', 'Categoria', 'Alcance', 'ER', 'Total_Interacciones']
                 )
 
                 # Puntos
@@ -150,11 +139,11 @@ if boton_analizar:
                 
                 st.altair_chart(points + text + rule_x + rule_y, use_container_width=True)
 
-            # --- 7. KPIS LATERALES ---
+            # --- 6. KPIS LATERALES ---
             with col_kpi:
                 st.subheader("Resumen")
                 st.metric("Promedio Alcance", f"{mediana_alcance:,.0f}")
-                st.metric("Promedio Engagement", f"{mediana_er:.2f}%")
+                st.metric("Promedio ER", f"{mediana_er:.2f}%")
                 
                 # Encontrar el mejor post absoluto
                 if not df.empty:
@@ -162,7 +151,7 @@ if boton_analizar:
                     best_post = df.loc[best_idx]
                     st.success(f"🏆 **MVP (Mejor Post):**\n\n{best_post['Nombre del Post']}\n\n({best_post['ER']:.2f}% ER)")
 
-            # --- 8. TABLAS DE ACCIÓN ---
+            # --- 7. TABLAS DE ACCIÓN ---
             st.divider()
             st.subheader("3. Acciones Recomendadas")
             
@@ -180,7 +169,7 @@ if boton_analizar:
                 
             with t3:
                 st.markdown("**Listado completo con clasificación.**")
-                st.dataframe(df[['Nombre del Post', 'Alcance', 'ER', 'Categoria']], hide_index=True, use_container_width=True)
+                st.dataframe(df[['Nombre del Post', 'Alcance', 'ER', 'Total_Interacciones', 'Categoria']], hide_index=True, use_container_width=True)
 
         except Exception as e:
             st.error(f"Error en el cálculo: {e}")
