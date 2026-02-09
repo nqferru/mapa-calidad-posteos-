@@ -109,5 +109,29 @@ with col_graph:
                 )
 
                 # Líneas de referencia (Medianas)
-                rule_x = alt.Chart(
+                rule_x = alt.Chart(pd.DataFrame({'x': [mediana_alcance]})).mark_rule(color='red', strokeDash=[3,3]).encode(x='x')
+                rule_y = alt.Chart(pd.DataFrame({'y': [mediana_er]})).mark_rule(color='red', strokeDash=[3,3]).encode(y='y')
+                
+                st.altair_chart(points + rule_x + rule_y, use_container_width=True)
+
+                # --- TABLAS DE RESULTADOS ---
+                st.divider()
+                st.markdown("### 📋 Detalle por Categoría")
+                
+                t1, t2 = st.tabs(["💎 Ganadores", "⚠️ Problemas"])
+                
+                with t1:
+                    st.success("Estos posts funcionaron. ¡Analízalos!")
+                    ganadores = df[df['Categoria'].str.contains('UNICORNIO|JOYA')]
+                    st.dataframe(ganadores[['Post_ID', 'Categoria', 'Alcance', 'ER']], hide_index=True)
+                
+                with t2:
+                    st.warning("Estos posts fallaron o desgastaron a la audiencia.")
+                    perdedores = df[df['Categoria'].str.contains('CLICKBAIT|BASURA')]
+                    st.dataframe(perdedores[['Post_ID', 'Categoria', 'Alcance', 'ER']], hide_index=True)
+
+            except Exception as e:
+                st.error(f"Error en el cálculo: {e}")
+    else:
+        st.info("👈 Ajusta los datos en la tabla y presiona el botón para ver el análisis.")
 
