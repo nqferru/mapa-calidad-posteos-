@@ -149,5 +149,12 @@ with col_graph:
                     st.dataframe(ganadores[['Nombre del Post', 'Categoria', 'Alcance', 'ER']], hide_index=True)
                 
                 with t2:
-                    st.warning("Posts que desgastaron a la audiencia
+                    st.warning("Posts que desgastaron a la audiencia o fallaron.")
+                    perdedores = df[df['Categoria'].str.contains('CLICKBAIT|BASURA')]
+                    st.dataframe(perdedores[['Nombre del Post', 'Categoria', 'Alcance', 'ER']], hide_index=True)
+
+            except Exception as e:
+                st.error(f"Error en el cálculo: {e}")
+    else:
+        st.info("👈 Ingresa los nombres y datos de los posts a la izquierda.")
 
