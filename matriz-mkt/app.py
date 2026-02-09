@@ -110,3 +110,4 @@ with col_graph:
 
                 # Líneas de referencia (Medianas)
                 rule_x = alt.Chart(
+
