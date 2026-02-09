@@ -116,7 +116,7 @@ if boton_analizar:
                 
                 # Definir colores corporativos
                 domain = ['💎 Éxito Total', '🛡️ Alta Fidelización', '⚠️ Viral Superficial', '📉 Bajo Impacto', '⚖️ Rendimiento Estándar', '📉 Revisar Datos']
-                range_ = ['#2ecc71', '#3498db', '#f1c40f', '#95a5a6', '#bdc3c7', '#000000'] # Verde, Azul, Amarillo, Gris Oscuro, Gris Claro, Negro
+                range_ = ['#2ecc71', '#3498db', '#f1c40f', '#e74c3c', '#bdc3c7', '#000000'] # Verde, Azul, Amarillo, Rojo, Gris Claro, Negro
 
                 base = alt.Chart(df).encode(
                     x=alt.X('Alcance', title='Viralidad (Alcance)'),
@@ -175,4 +175,5 @@ if boton_analizar:
             st.error(f"Error en el cálculo: {e}")
 else:
     st.info("💡 Tip: Copia y pega tus datos de Excel directamente en la tabla de arriba.")
+
 
