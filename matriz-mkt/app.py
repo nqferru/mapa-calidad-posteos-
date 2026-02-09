@@ -2,178 +2,148 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
+import io
 
-# --- 1. CONFIGURACIÓN DE PÁGINA ---
+# --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Matriz de Rendimiento", layout="wide")
 st.title("🎯 Matriz de Impacto de Contenido")
-st.markdown("""
-Esta herramienta clasifica tus posts basándose en **Viralidad** (Alcance) y **Engagement Puro** (Interacciones Totales).
-**Nota:** El cálculo de engagement trata todas las interacciones (Likes, Guardados, etc.) con el mismo valor.
-""")
+st.markdown("Suba su archivo Excel para analizar Viralidad vs. Engagement.")
 
-# --- 2. FUNCIONES DE CÁLCULO (SIN PESOS) ---
+# --- 2. LÓGICA (Sin Pesos - Engagement Puro) ---
 def calcular_metricas(df):
-    # Limpieza: Asegurar que todo sea número (convierte errores a 0)
-    cols_numericas = ['Alcance', 'Likes', 'Guardados', 'Compartidos', 'Comentarios']
-    for col in cols_numericas:
+    # Estandarizar nombres de columnas (quita espacios extra, minúsculas)
+    df.columns = df.columns.str.strip()
+    
+    # Validar que existan las columnas necesarias
+    req_cols = ['Nombre del Post', 'Alcance', 'Likes', 'Guardados', 'Compartidos', 'Comentarios']
+    missing = [c for c in req_cols if c not in df.columns]
+    
+    if missing:
+        st.error(f"⚠️ Faltan columnas en el Excel: {missing}")
+        st.stop()
+
+    # Limpieza numérica
+    cols_num = ['Alcance', 'Likes', 'Guardados', 'Compartidos', 'Comentarios']
+    for col in cols_num:
         df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-    # Cálculo de Interacciones Totales (Suma Simple)
-    df['Total_Interacciones'] = df['Likes'] + df['Guardados'] + df['Compartidos'] + df['Comentarios']
-    
-    # Cálculo del Engagement Rate (ER) sobre Alcance
-    # Fórmula: (Total Interacciones / Alcance) * 100
-    df['ER'] = df.apply(lambda row: (row['Total_Interacciones'] / row['Alcance']) * 100 if row['Alcance'] > 0 else 0, axis=1)
+    # Cálculo Engagement Puro
+    df['Interacciones'] = df['Likes'] + df['Guardados'] + df['Compartidos'] + df['Comentarios']
+    df['ER'] = df.apply(lambda row: (row['Interacciones'] / row['Alcance']) * 100 if row['Alcance'] > 0 else 0, axis=1)
     
     return df
 
-# --- 3. INTERFAZ DE INGRESO DE DATOS ---
-st.subheader("1. Datos de Origen")
+# --- 3. INTERFAZ DE CARGA (DRAG & DROP) ---
+col_load, col_kpi = st.columns([2, 1])
 
-# Plantilla inicial (Ejemplo)
-data_inicial = {
-    'Nombre del Post': ['Reel Tendencia', 'Carrusel Educativo', 'Meme Viernes', 'Video Promo', 'Foto Equipo', 'Post Promedio 1', 'Post Promedio 2'],
-    'Alcance': [12000, 15000, 8000, 25000, 10000, 11500, 11800],
-    'Likes': [300, 450, 150, 800, 200, 280, 290],
-    'Guardados': [20, 45, 10, 100, 15, 18, 19],
-    'Compartidos': [5, 20, 2, 50, 3, 4, 5],
-    'Comentarios': [8, 15, 3, 60, 5, 7, 7]
-}
-df_template = pd.DataFrame(data_inicial)
+with col_load:
+    st.subheader("1. Cargar Datos")
+    
+    # Widget de subida de archivos
+    uploaded_file = st.file_uploader("Arrastra tu Excel (.xlsx) o CSV aquí", type=['xlsx', 'csv'])
 
-# Configuración visual de la tabla
-column_config = {
-    "Nombre del Post": st.column_config.TextColumn("Nombre / Etiqueta", required=True, width="medium"),
-    "Alcance": st.column_config.NumberColumn("Alcance", format="%d"),
-    "Likes": st.column_config.NumberColumn("Likes", format="%d"),
-    "Guardados": st.column_config.NumberColumn("Guardados", format="%d"),
-    "Compartidos": st.column_config.NumberColumn("Compartidos", format="%d"),
-    "Comentarios": st.column_config.NumberColumn("Comentarios", format="%d"),
-}
-
-# La Tabla Editable
-edited_df = st.data_editor(
-    df_template, 
-    num_rows="dynamic", 
-    height=300,
-    use_container_width=True, 
-    column_config=column_config
-)
-
-boton_analizar = st.button("🚀 ANALIZAR RENDIMIENTO", type="primary")
+    # Botón para descargar plantilla (Ayuda al usuario)
+    if not uploaded_file:
+        st.info("¿No tienes el formato?")
+        # Creamos un Excel vacío en memoria para que lo descargue
+        df_template = pd.DataFrame(columns=['Nombre del Post', 'Alcance', 'Likes', 'Guardados', 'Compartidos', 'Comentarios'])
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            df_template.to_excel(writer, index=False, sheet_name='Datos')
+            
+        st.download_button(
+            label="📥 Descargar Plantilla Excel Vacía",
+            data=buffer,
+            file_name="plantilla_metrics.xlsx",
+            mime="application/vnd.ms-excel"
+        )
 
 # --- 4. MOTOR DE ANÁLISIS ---
-if boton_analizar:
-    if edited_df.empty:
-        st.error("⚠️ La tabla está vacía.")
-    else:
-        try:
-            # 4.1 Procesar Datos
-            df = calcular_metricas(edited_df.copy())
+if uploaded_file:
+    try:
+        # Detectar formato y leer
+        if uploaded_file.name.endswith('.csv'):
+            df_raw = pd.read_csv(uploaded_file)
+        else:
+            df_raw = pd.read_excel(uploaded_file)
+
+        # Procesar
+        df = calcular_metricas(df_raw)
+
+        # Estadísticas Base
+        mediana_alcance = df['Alcance'].median()
+        mediana_er = df['ER'].median()
+
+        # Clasificación
+        def clasificar(row):
+            if row['Alcance'] == 0: return "📉 Revisar Datos"
             
-            # 4.2 Calcular Estadísticas Base (Medianas)
-            mediana_alcance = df['Alcance'].median()
-            mediana_er = df['ER'].median()
+            # Zona Muerta (10%)
+            margen_alcance = mediana_alcance * 0.10
+            margen_er = mediana_er * 0.10
 
-            # 4.3 Lógica de Clasificación (Con Zona Muerta)
-            def clasificar(row):
-                if row['Alcance'] == 0: return "📉 Revisar Datos"
-                
-                # Definir Zona Muerta (10% alrededor de la mediana)
-                # Si el post está muy cerca del promedio, es "Estándar", no "Éxito".
-                margen_alcance = mediana_alcance * 0.10
-                margen_er = mediana_er * 0.10
+            # Si es Estándar
+            if (abs(row['Alcance'] - mediana_alcance) <= margen_alcance) and \
+               (abs(row['ER'] - mediana_er) <= margen_er):
+                return "⚖️ Rendimiento Estándar"
 
-                distancia_alcance = abs(row['Alcance'] - mediana_alcance)
-                distancia_er = abs(row['ER'] - mediana_er)
+            # Cuadrantes
+            if row['Alcance'] > mediana_alcance and row['ER'] > mediana_er: return "💎 Éxito Total"
+            elif row['Alcance'] < mediana_alcance and row['ER'] > mediana_er: return "🛡️ Alta Fidelización"
+            elif row['Alcance'] > mediana_alcance and row['ER'] < mediana_er: return "⚠️ Viral Superficial"
+            else: return "📉 Bajo Impacto"
 
-                # Si cae dentro del margen del 10%, es Estándar
-                if distancia_alcance <= margen_alcance and distancia_er <= margen_er:
-                    return "⚖️ Rendimiento Estándar"
+        df['Categoria'] = df.apply(clasificar, axis=1)
 
-                # Si escapa del margen, clasificamos en cuadrantes:
-                if row['Alcance'] > mediana_alcance and row['ER'] > mediana_er:
-                    return "💎 Éxito Total"
-                
-                elif row['Alcance'] < mediana_alcance and row['ER'] > mediana_er:
-                    return "🛡️ Alta Fidelización"
-                
-                elif row['Alcance'] > mediana_alcance and row['ER'] < mediana_er:
-                    return "⚠️ Viral Superficial"
-                
-                else:
-                    return "📉 Bajo Impacto"
-
-            df['Categoria'] = df.apply(clasificar, axis=1)
-
-            st.divider()
+        # --- 5. VISUALIZACIÓN ---
+        st.divider()
+        c_chart, c_summ = st.columns([3, 1])
+        
+        with c_chart:
+            st.subheader("2. Mapa Estratégico")
             
-            # --- 5. VISUALIZACIÓN (GRÁFICO) ---
-            col_graph, col_kpi = st.columns([3, 1])
+            domain = ['💎 Éxito Total', '🛡️ Alta Fidelización', '⚠️ Viral Superficial', '📉 Bajo Impacto', '⚖️ Rendimiento Estándar', '📉 Revisar Datos']
+            range_ = ['#2ecc71', '#3498db', '#f1c40f', '#e74c3c', '#bdc3c7', '#000000'] # ROJO APLICADO
+
+            base = alt.Chart(df).encode(
+                x=alt.X('Alcance', title='Viralidad (Alcance)'),
+                y=alt.Y('ER', title='Engagement Rate (%)'),
+                tooltip=['Nombre del Post', 'Categoria', 'Alcance', 'ER', 'Interacciones']
+            )
+
+            points = base.mark_circle(size=200).encode(
+                color=alt.Color('Categoria', scale=alt.Scale(domain=domain, range=range_), legend=alt.Legend(orient='bottom')),
+                opacity=alt.value(0.9)
+            )
+
+            text = base.mark_text(align='left', baseline='middle', dx=12).encode(text='Nombre del Post')
             
-            with col_graph:
-                st.subheader("2. Mapa Estratégico")
-                
-                # Definir colores corporativos
-                domain = ['💎 Éxito Total', '🛡️ Alta Fidelización', '⚠️ Viral Superficial', '📉 Bajo Impacto', '⚖️ Rendimiento Estándar', '📉 Revisar Datos']
-                range_ = ['#2ecc71', '#3498db', '#f1c40f', '#e74c3c', '#bdc3c7', '#000000'] # Verde, Azul, Amarillo, Rojo, Gris Claro, Negro
-
-                base = alt.Chart(df).encode(
-                    x=alt.X('Alcance', title='Viralidad (Alcance)'),
-                    y=alt.Y('ER', title='Tasa de Interacción (ER %)'),
-                    tooltip=['Nombre del Post', 'Categoria', 'Alcance', 'ER', 'Total_Interacciones']
-                )
-
-                # Puntos
-                points = base.mark_circle(size=200).encode(
-                    color=alt.Color('Categoria', scale=alt.Scale(domain=domain, range=range_), legend=alt.Legend(orient='bottom', title="Categoría")),
-                    opacity=alt.value(0.9)
-                )
-
-                # Texto (Nombres)
-                text = base.mark_text(align='left', baseline='middle', dx=12).encode(text='Nombre del Post')
-
-                # Líneas Promedio
-                rule_x = alt.Chart(pd.DataFrame({'x': [mediana_alcance]})).mark_rule(color='gray', strokeDash=[3,3]).encode(x='x')
-                rule_y = alt.Chart(pd.DataFrame({'y': [mediana_er]})).mark_rule(color='gray', strokeDash=[3,3]).encode(y='y')
-                
-                st.altair_chart(points + text + rule_x + rule_y, use_container_width=True)
-
-            # --- 6. KPIS LATERALES ---
-            with col_kpi:
-                st.subheader("Resumen")
-                st.metric("Promedio Alcance", f"{mediana_alcance:,.0f}")
-                st.metric("Promedio ER", f"{mediana_er:.2f}%")
-                
-                # Encontrar el mejor post absoluto
-                if not df.empty:
-                    best_idx = df['ER'].idxmax()
-                    best_post = df.loc[best_idx]
-                    st.success(f"🏆 **MVP (Mejor Post):**\n\n{best_post['Nombre del Post']}\n\n({best_post['ER']:.2f}% ER)")
-
-            # --- 7. TABLAS DE ACCIÓN ---
-            st.divider()
-            st.subheader("3. Acciones Recomendadas")
+            # Líneas Promedio
+            rule_x = alt.Chart(pd.DataFrame({'x': [mediana_alcance]})).mark_rule(color='gray', strokeDash=[3,3]).encode(x='x')
+            rule_y = alt.Chart(pd.DataFrame({'y': [mediana_er]})).mark_rule(color='gray', strokeDash=[3,3]).encode(y='y')
             
-            t1, t2, t3 = st.tabs(["💎 Replicar (Éxitos)", "🛡️ Potenciar (Fieles)", "⚖️ Todo el Contenido"])
-            
-            with t1:
-                st.success("**Estos contenidos funcionan perfecto.** Mantener línea editorial.")
-                filtros = ['💎 Éxito Total']
-                st.dataframe(df[df['Categoria'].isin(filtros)][['Nombre del Post', 'Alcance', 'ER', 'Categoria']], hide_index=True, use_container_width=True)
-            
-            with t2:
-                st.info("**Contenido de nicho muy valioso.** Intentar nuevas portadas o resubir en Stories.")
-                filtros = ['🛡️ Alta Fidelización']
-                st.dataframe(df[df['Categoria'].isin(filtros)][['Nombre del Post', 'Alcance', 'ER', 'Categoria']], hide_index=True, use_container_width=True)
-                
-            with t3:
-                st.markdown("**Listado completo con clasificación.**")
-                st.dataframe(df[['Nombre del Post', 'Alcance', 'ER', 'Total_Interacciones', 'Categoria']], hide_index=True, use_container_width=True)
+            st.altair_chart(points + text + rule_x + rule_y, use_container_width=True)
 
-        except Exception as e:
-            st.error(f"Error en el cálculo: {e}")
+        with c_summ:
+            st.metric("Posts Analizados", len(df))
+            st.metric("Promedio Alcance", f"{mediana_alcance:,.0f}")
+            st.metric("Promedio ER", f"{mediana_er:.2f}%")
+            
+            # Tabla Resumen Pequeña
+            st.caption("Top 3 por Engagement")
+            st.dataframe(df.nlargest(3, 'ER')[['Nombre del Post', 'ER']], hide_index=True)
+
+        # --- 6. DETALLE ---
+        st.subheader("3. Detalle de Datos")
+        st.dataframe(df, use_container_width=True)
+
+    except Exception as e:
+        st.error(f"Error al procesar el archivo: {e}")
+        st.info("Asegúrate de usar la plantilla descargable.")
+
 else:
-    st.info("💡 Tip: Copia y pega tus datos de Excel directamente en la tabla de arriba.")
+    # Mensaje de bienvenida cuando no hay archivo
+    with col_kpi:
+        st.info("👈 Sube un archivo para comenzar")
 
 
