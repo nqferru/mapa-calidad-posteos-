@@ -48,7 +48,7 @@ with col_load:
         # Creamos un Excel vacío en memoria para que lo descargue
         df_template = pd.DataFrame(columns=['Nombre del Post', 'Alcance', 'Likes', 'Guardados', 'Compartidos', 'Comentarios'])
         buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
             df_template.to_excel(writer, index=False, sheet_name='Datos')
             
         st.download_button(
@@ -145,5 +145,6 @@ else:
     # Mensaje de bienvenida cuando no hay archivo
     with col_kpi:
         st.info("👈 Sube un archivo para comenzar")
+
 
 
